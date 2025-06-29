@@ -6,7 +6,6 @@ import logging
 import time
 from typing import List, Optional, Callable, Dict, Any
 import numpy as np
-import pandas as pd
 
 try:
     from sentence_transformers import SentenceTransformer
@@ -96,7 +95,7 @@ class EmbeddingService:
         if progress_callback:
             progress_callback(0, 100, "Preparing text data...")
 
-        texts = self._extract_texts(data_config)
+        texts = self._extract_texts(data_config, data_config.max_documents)
         if not texts:
             logger.error("No texts extracted from data")
             return EmbeddingResult()
@@ -202,15 +201,20 @@ class EmbeddingService:
             },
         )
 
-    def _extract_texts(self, data_config: DataConfig) -> List[str]:
+    def _extract_texts(
+        self, data_config: DataConfig, max_documents: Optional[int] = None
+    ) -> List[str]:
         """Extract and combine texts from the data configuration.
 
         Args:
             data_config: Data configuration
+            max_documents: Maximum number of documents to extract (None for all)
 
         Returns:
             List of combined texts
         """
+        import pandas as pd  # Import pandas at the top of the function
+
         if (
             not data_config.file_metadata
             or data_config.file_metadata.preview_data is None
@@ -218,12 +222,33 @@ class EmbeddingService:
             logger.error("No data available for text extraction")
             return []
 
-        # For now, use preview data. In a full implementation, you'd want to load the full dataset
-        # This is a simplified version for Phase 3
+        # Use preview data as base, but load more if available and needed
         df = data_config.file_metadata.preview_data
+
+        # If we need more documents and have access to the full file, try to load more
+        if (
+            max_documents
+            and max_documents > len(df)
+            and data_config.file_metadata.file_path
+        ):
+            try:
+                # Try to load more data from the original file
+                full_df = pd.read_csv(
+                    data_config.file_metadata.file_path, nrows=max_documents
+                )
+                df = full_df
+                logger.info(f"Loaded {len(df)} rows from full dataset")
+            except Exception as e:
+                logger.warning(f"Could not load full dataset, using preview data: {e}")
+                # Fall back to preview data
+
         texts = []
+        row_count = 0
 
         for _, row in df.iterrows():
+            if max_documents and row_count >= max_documents:
+                break
+
             text_parts = []
 
             for col in data_config.selected_columns:
@@ -245,11 +270,13 @@ class EmbeddingService:
                         or len(combined_text) <= data_config.max_text_length
                     ):
                         texts.append(combined_text)
+                        row_count += 1
 
         # Remove empty texts if configured
         if data_config.remove_empty_rows:
             texts = [text for text in texts if text.strip()]
 
+        logger.info(f"Extracted {len(texts)} texts for processing")
         return texts
 
     def _generate_embeddings_with_progress(

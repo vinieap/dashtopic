@@ -8,6 +8,7 @@ from .model_management_service import ModelManagementService
 from .cache_service import CacheService
 from .embedding_service import EmbeddingService
 from .bertopic_service import BERTopicService
+from .hyperparameter_optimization_service import HyperparameterOptimizationService
 
 __all__ = [
     "FileIOService",
@@ -16,4 +17,5 @@ __all__ = [
     "CacheService",
     "EmbeddingService",
     "BERTopicService",
+    "HyperparameterOptimizationService",
 ]

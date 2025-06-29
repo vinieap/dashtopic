@@ -16,7 +16,7 @@ from ..utils.constants import (
     WINDOW_DEFAULT_HEIGHT,
 )
 from ..utils.error_handling import handle_exception
-from ..controllers import EmbeddingController, TopicModelingController
+from ..controllers import EmbeddingController, TopicModelingController, OptimizationController
 from ..services import (
     FileIOService,
     DataValidationService,
@@ -24,6 +24,7 @@ from ..services import (
     CacheService,
     EmbeddingService,
     BERTopicService,
+    HyperparameterOptimizationService,
 )
 from .tabs.data_import_tab import DataImportTab
 from .tabs.model_config_tab import ModelConfigTab
@@ -106,6 +107,17 @@ class MainWindow(ctk.CTk):
             self.topic_modeling_controller.set_services(
                 embedding_service=self.embedding_service,
                 data_validation_service=self.data_validation_service,
+            )
+
+            # Hyperparameter optimization service and controller
+            self.hyperparameter_optimization_service = HyperparameterOptimizationService(
+                bertopic_service=self.bertopic_service
+            )
+            self.optimization_controller = OptimizationController(
+                optimization_service=self.hyperparameter_optimization_service,
+                topic_controller=self.topic_modeling_controller,
+                embedding_controller=self.embedding_controller,
+                data_controller=None  # Will be set after data import tab is created
             )
 
             logger.info("All controllers initialized successfully")
@@ -204,6 +216,45 @@ class MainWindow(ctk.CTk):
             logger.info("Topic modeling controller connected successfully")
         except Exception as e:
             logger.error(f"Failed to connect topic modeling controller: {str(e)}")
+
+        # Connect visualization tab to topic modeling controller
+        try:
+            self.visualization_tab.set_controller(self.topic_modeling_controller)
+            logger.info("Visualization tab controller connected successfully")
+        except Exception as e:
+            logger.error(f"Failed to connect visualization tab controller: {str(e)}")
+
+        # Connect hyperparameter tab to optimization controller
+        try:
+            # Get data controller from data import tab and update optimization controller
+            data_controller = self.data_import_tab.get_data_controller()
+            self.optimization_controller.data_controller = data_controller
+            
+            # Set controller for hyperparameter tab
+            self.hyperparameter_tab.set_controller(self.optimization_controller)
+            logger.info("Hyperparameter tab controller connected successfully")
+        except Exception as e:
+            logger.error(f"Failed to connect hyperparameter tab controller: {str(e)}")
+
+        # Connect export tab to all controllers
+        try:
+            # Get data controller from data import tab
+            data_controller = self.data_import_tab.get_data_controller()
+
+            # Get embedding controller from model config tab
+            embedding_controller = getattr(
+                self.model_config_tab, "embedding_controller", None
+            )
+
+            # Set controllers for export tab
+            self.export_tab.set_controllers(
+                topic_controller=self.topic_modeling_controller,
+                data_controller=data_controller,
+                embedding_controller=embedding_controller,
+            )
+            logger.info("Export tab controllers connected successfully")
+        except Exception as e:
+            logger.error(f"Failed to connect export tab controllers: {str(e)}")
 
         # Setup main window status callbacks for all controllers
         try:

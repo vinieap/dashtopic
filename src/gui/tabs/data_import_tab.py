@@ -55,6 +55,9 @@ class DataImportTab:
         # Text combination preview section
         self._create_text_preview_section()
         
+        # Document count section
+        self._create_document_count_section()
+        
         # Validation and status section
         self._create_validation_section()
         
@@ -172,6 +175,83 @@ class DataImportTab:
         self.text_preview_widget = TextPreviewWidget(text_frame)
         self.text_preview_widget.pack(fill="both", expand=True, padx=10, pady=(0, 10))
     
+    def _create_document_count_section(self):
+        """Create document count selection section."""
+        # Document count frame
+        doc_count_frame = ctk.CTkFrame(self.main_frame)
+        doc_count_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Section header
+        ctk.CTkLabel(
+            doc_count_frame, 
+            text="5. Document Count for Analysis",
+            font=ctk.CTkFont(size=16, weight="bold")
+        ).pack(anchor="w", padx=10, pady=(10, 5))
+        
+        # Document count controls
+        controls_frame = ctk.CTkFrame(doc_count_frame, fg_color="transparent")
+        controls_frame.pack(fill="x", padx=10, pady=(0, 10))
+        
+        # Description label
+        ctk.CTkLabel(
+            controls_frame,
+            text="Select how many documents to use for topic modeling:",
+            font=ctk.CTkFont(size=12)
+        ).pack(anchor="w", pady=(0, 5))
+        
+        # Options frame
+        options_frame = ctk.CTkFrame(controls_frame, fg_color="transparent")
+        options_frame.pack(fill="x")
+        
+        # Radio variable for document count option
+        self.doc_count_option = ctk.StringVar(value="all")
+        
+        # All documents radio button
+        all_radio = ctk.CTkRadioButton(
+            options_frame,
+            text="Use all documents",
+            variable=self.doc_count_option,
+            value="all",
+            command=self._on_doc_count_option_changed
+        )
+        all_radio.pack(side="left", padx=(0, 20))
+        
+        # Limited documents radio button
+        limited_radio = ctk.CTkRadioButton(
+            options_frame,
+            text="Limit to:",
+            variable=self.doc_count_option,
+            value="limited",
+            command=self._on_doc_count_option_changed
+        )
+        limited_radio.pack(side="left", padx=(0, 10))
+        
+        # Document count slider and value
+        self.doc_count_var = ctk.IntVar(value=1000)
+        self.doc_count_label = ctk.CTkLabel(options_frame, text="1000", width=60)
+        self.doc_count_label.pack(side="left", padx=(0, 10))
+        
+        self.doc_count_slider = ctk.CTkSlider(
+            options_frame,
+            from_=100,
+            to=10000,
+            number_of_steps=99,
+            variable=self.doc_count_var,
+            command=self._on_doc_count_slider_changed,
+            width=200,
+            state="disabled"
+        )
+        self.doc_count_slider.pack(side="left", padx=(0, 10))
+        
+        # Info label
+        self.doc_info_label = ctk.CTkLabel(
+            controls_frame,
+            text="",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        self.doc_info_label.pack(anchor="w", pady=(5, 0))
+    
     def _create_validation_section(self):
         """Create validation and issues section."""
         # Validation frame
@@ -181,7 +261,7 @@ class DataImportTab:
         # Section header
         ctk.CTkLabel(
             validation_frame, 
-            text="5. Data Validation & Issues",
+            text="6. Data Validation & Issues",
             font=ctk.CTkFont(size=16, weight="bold")
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
@@ -208,7 +288,7 @@ class DataImportTab:
         # Section header
         ctk.CTkLabel(
             actions_frame, 
-            text="6. Actions",
+            text="7. Actions",
             font=ctk.CTkFont(size=16, weight="bold")
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
@@ -351,6 +431,20 @@ class DataImportTab:
         # Update ready status
         self._update_ready_status()
         
+        # Update document count info
+        self._update_doc_info_label()
+        
+        # Update slider maximum based on dataset size
+        if self.data_controller.current_data is not None:
+            total_docs = len(self.data_controller.current_data)
+            # Adjust slider range based on dataset size
+            if total_docs < 1000:
+                self.doc_count_slider.configure(from_=10, to=total_docs)
+            elif total_docs < 10000:
+                self.doc_count_slider.configure(from_=100, to=total_docs)
+            else:
+                self.doc_count_slider.configure(from_=100, to=min(100000, total_docs))
+        
         logger.info("UI updated after successful data loading")
     
     def _on_column_selection_changed(self, selected_columns):
@@ -481,6 +575,47 @@ class DataImportTab:
                 messagebox.showinfo("Next Step", "Data is ready! Please switch to the Model Configuration tab.")
         else:
             messagebox.showwarning("Not Ready", "Please complete the data configuration before continuing.")
+    
+    def _on_doc_count_option_changed(self):
+        """Handle document count option change."""
+        if self.doc_count_option.get() == "all":
+            self.doc_count_slider.configure(state="disabled")
+            self.doc_count_label.configure(text_color="gray")
+            self.data_controller.data_config.max_documents = None
+            self._update_doc_info_label()
+        else:
+            self.doc_count_slider.configure(state="normal")
+            self.doc_count_label.configure(text_color=("black", "white"))
+            self.data_controller.data_config.max_documents = self.doc_count_var.get()
+            self._update_doc_info_label()
+    
+    def _on_doc_count_slider_changed(self, value):
+        """Handle document count slider change."""
+        count = int(value)
+        self.doc_count_var.set(count)
+        self.doc_count_label.configure(text=str(count))
+        
+        if self.doc_count_option.get() == "limited":
+            self.data_controller.data_config.max_documents = count
+            self._update_doc_info_label()
+    
+    def _update_doc_info_label(self):
+        """Update the document count info label."""
+        if self.data_controller.current_data is not None:
+            total_docs = len(self.data_controller.current_data)
+            
+            if self.doc_count_option.get() == "all" or self.data_controller.data_config.max_documents is None:
+                self.doc_info_label.configure(
+                    text=f"Total documents in dataset: {total_docs:,} (using all)"
+                )
+            else:
+                limit = self.data_controller.data_config.max_documents
+                actual = min(limit, total_docs)
+                self.doc_info_label.configure(
+                    text=f"Total documents: {total_docs:,} (using first {actual:,})"
+                )
+        else:
+            self.doc_info_label.configure(text="Load a dataset to see document count")
     
     def _on_status_update(self, status_message: str):
         """Handle status updates from the data controller."""

@@ -431,6 +431,50 @@ class TopicModelingController:
         self._notify_status("Results cleared")
         logger.info("Topic modeling results cleared")
 
+    def update_config_from_parameters(self, parameters: Dict[str, Any]):
+        """Update the current configuration from optimization parameters.
+        
+        Args:
+            parameters: Dictionary of parameter names to values
+        """
+        if not self.current_config:
+            logger.warning("No current config to update")
+            return
+        
+        # Update clustering parameters
+        if "min_cluster_size" in parameters:
+            self.current_config.clustering.min_cluster_size = parameters["min_cluster_size"]
+        if "min_samples" in parameters:
+            self.current_config.clustering.min_samples = parameters["min_samples"]
+        if "metric" in parameters:
+            self.current_config.clustering.metric = parameters["metric"]
+        if "n_clusters" in parameters:
+            self.current_config.clustering.n_clusters = parameters["n_clusters"]
+        
+        # Update UMAP parameters
+        if "n_neighbors" in parameters:
+            self.current_config.umap.n_neighbors = parameters["n_neighbors"]
+        if "n_components" in parameters:
+            self.current_config.umap.n_components = parameters["n_components"]
+        if "min_dist" in parameters:
+            self.current_config.umap.min_dist = parameters["min_dist"]
+        
+        # Update vectorization parameters
+        if "min_df" in parameters:
+            self.current_config.vectorization.min_df = parameters["min_df"]
+        if "max_df" in parameters:
+            self.current_config.vectorization.max_df = parameters["max_df"]
+        if "ngram_range" in parameters:
+            self.current_config.vectorization.ngram_range = parameters["ngram_range"]
+        
+        # Update BERTopic parameters
+        if "top_n_words" in parameters:
+            self.current_config.top_n_words = parameters["top_n_words"]
+        if "nr_topics" in parameters:
+            self.current_config.nr_topics = parameters["nr_topics"]
+        
+        logger.info("Updated topic model config from optimization parameters")
+
     def _get_main_window(self):
         """Get reference to main window (helper method)."""
         # This is a simple approach - in practice you might want to store the reference

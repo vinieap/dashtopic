@@ -82,6 +82,7 @@ class DataConfig:
     remove_empty_rows: bool = True
     min_text_length: int = 10
     max_text_length: Optional[int] = None
+    max_documents: Optional[int] = None  # Limit number of documents to process
     preprocessing_steps: List[str] = field(default_factory=list)
 
     @property

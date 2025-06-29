@@ -25,6 +25,7 @@ class EmbeddingController:
         self.embedding_service = EmbeddingService(cache_dir)
         self._current_task: Optional[threading.Thread] = None
         self._cancel_requested = False
+        self.current_result: Optional[EmbeddingResult] = None
         
         logger.info("Embedding controller initialized")
     
@@ -142,6 +143,7 @@ class EmbeddingController:
                     
                     if result.embeddings is not None:
                         logger.info("Embedding generation completed successfully")
+                        self.current_result = result  # Store the result
                         if completion_callback:
                             completion_callback(result)
                     else:
@@ -320,4 +322,22 @@ class EmbeddingController:
             "estimated_seconds": estimated_time,
             "estimated_minutes": estimated_time / 60,
             "estimated_hours": estimated_time / 3600
-        } 
+        }
+    
+    def has_embeddings(self) -> bool:
+        """Check if embeddings have been generated.
+        
+        Returns:
+            True if embeddings are available
+        """
+        return self.current_result is not None and self.current_result.embeddings is not None
+    
+    def get_embeddings(self):
+        """Get the current embeddings array.
+        
+        Returns:
+            Embeddings array or None if not available
+        """
+        if self.current_result and self.current_result.embeddings is not None:
+            return self.current_result.embeddings
+        return None 

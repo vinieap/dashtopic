@@ -339,6 +339,17 @@ class DataController:
             logger.error(f"Failed to generate analysis-ready data: {e}")
             return None
     
+    def get_combined_texts(self) -> List[str]:
+        """Get the combined text data as a list of strings.
+        
+        Returns:
+            List of combined text strings, or empty list if not ready
+        """
+        series = self.get_analysis_ready_data()
+        if series is not None:
+            return series.tolist()
+        return []
+    
     def clear_data(self):
         """Clear all loaded data and reset state."""
         self.current_data = None

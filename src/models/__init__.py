@@ -21,6 +21,18 @@ from .data_models import (
     TopicModelingProgress,
 )
 
+from .optimization_models import (
+    OptimizationStrategy,
+    MetricType,
+    ParameterRange,
+    ParameterSpace,
+    OptimizationConfig,
+    MetricResult,
+    OptimizationRun,
+    OptimizationResult,
+    ComparisonReport,
+)
+
 __all__ = [
     "FileMetadata",
     "ValidationResult",
@@ -38,4 +50,14 @@ __all__ = [
     "TopicInfo",
     "TopicResult",
     "TopicModelingProgress",
+    # Optimization models
+    "OptimizationStrategy",
+    "MetricType",
+    "ParameterRange",
+    "ParameterSpace",
+    "OptimizationConfig",
+    "MetricResult",
+    "OptimizationRun",
+    "OptimizationResult",
+    "ComparisonReport",
 ]
