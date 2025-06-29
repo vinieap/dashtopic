@@ -734,8 +734,22 @@ class VisualizationTab:
         """Handle Plotly plot type change."""
         logger.info(f"Plotly plot type changed to: {value}")
 
-    def _get_processed_texts(self):
-        """Get the processed texts from the data controller or embedding result."""
+    def _get_processed_texts(self) -> Optional[List[str]]:
+        """
+        Get the processed texts from the data controller or embedding result.
+        
+        This method attempts to retrieve the original document texts used for
+        topic modeling from multiple sources in order of preference:
+        1. Main window's embedding result (most reliable)
+        2. Data controller's combined texts (fallback)
+        
+        Returns:
+            List of processed text documents or None if unavailable
+            
+        Note:
+            The returned texts should align with the topic assignments and
+            embeddings in the current_result by index.
+        """
         try:
             # Try to get from the main window's embedding result first
             if hasattr(self.parent, 'get_embedding_result'):
@@ -756,8 +770,20 @@ class VisualizationTab:
             logger.warning(f"Could not retrieve processed texts: {e}")
             return None
 
-    def generate_plotly_visualization(self):
-        """Generate interactive Plotly visualization."""
+    def generate_plotly_visualization(self) -> None:
+        """
+        Generate interactive Plotly visualization based on current settings.
+        
+        Creates and displays interactive plots using the current topic modeling
+        results. The type of plot generated depends on the plotly_plot_type
+        selection (scatter, distribution, or heatmap).
+        
+        The generated HTML is displayed in the tkinterweb widget if available,
+        otherwise falls back to showing HTML source code.
+        
+        Side Effects:
+            Updates the plotly_display widget with new HTML content
+        """
         if not self.current_result:
             if self.has_tkinterweb:
                 self.plotly_display.load_html(
@@ -806,8 +832,24 @@ class VisualizationTab:
                 self.plotly_display.delete("1.0", "end")
                 self.plotly_display.insert("1.0", f"Error generating plot: {str(e)}")
 
-    def create_plotly_scatter(self):
-        """Create interactive scatter plot using Plotly."""
+    def create_plotly_scatter(self) -> str:
+        """
+        Create interactive scatter plot using Plotly.
+        
+        Generates a 2D scatter plot of document embeddings with enhanced hover
+        information including document ID, topic keywords, and text snippets.
+        
+        Returns:
+            HTML string containing the complete interactive plot
+            
+        Raises:
+            ImportError: If Plotly is not installed
+            Exception: If plot generation fails (returned as HTML error message)
+            
+        Note:
+            Requires current_result.umap_embeddings to be available for 2D coordinates.
+            Colors points by topic assignment and includes rich hover tooltips.
+        """
         try:
             import plotly.express as px
 
@@ -896,8 +938,20 @@ class VisualizationTab:
         except Exception as e:
             return f"<p>Error creating scatter plot: {str(e)}</p>"
 
-    def create_plotly_distribution(self):
-        """Create interactive topic distribution plot."""
+    def create_plotly_distribution(self) -> str:
+        """
+        Create interactive topic distribution bar plot using Plotly.
+        
+        Generates a bar chart showing the number of documents assigned to each topic,
+        with hover information including topic keywords and percentages.
+        
+        Returns:
+            HTML string containing the complete interactive plot
+            
+        Note:
+            Excludes outlier topics (topic_id = -1) from the visualization.
+            Shows both absolute document counts and percentage distributions.
+        """
         try:
             import plotly.graph_objects as go
 
@@ -963,8 +1017,21 @@ class VisualizationTab:
         except Exception as e:
             return f"<p>Error creating distribution plot: {str(e)}</p>"
 
-    def create_plotly_heatmap(self):
-        """Create interactive topic similarity heatmap."""
+    def create_plotly_heatmap(self) -> str:
+        """
+        Create interactive topic similarity heatmap using Plotly.
+        
+        Generates a correlation matrix visualization showing similarity scores
+        between topics, with hover information displaying topic keywords.
+        
+        Returns:
+            HTML string containing the complete interactive plot
+            
+        Note:
+            Currently uses randomly generated similarity scores as a placeholder.
+            In a full implementation, this would use actual topic embeddings
+            to calculate semantic similarity between topics.
+        """
         try:
             import plotly.graph_objects as go
             import numpy as np

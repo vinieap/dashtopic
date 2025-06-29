@@ -1,5 +1,24 @@
 """
 BERTopic Service - Core topic modeling functionality.
+
+This service provides the main interface for training and managing BERTopic models.
+It handles async training, progress reporting, model configuration, and result generation.
+
+Features:
+- Asynchronous model training with progress callbacks
+- Support for custom embeddings and embedding models
+- Comprehensive error handling and cancellation
+- Model persistence and loading
+- Quality metrics calculation
+- Memory management and cleanup
+
+Classes:
+    BERTopicService: Main service class for BERTopic operations
+
+Example:
+    >>> service = BERTopicService()
+    >>> service.set_callbacks(progress_callback=update_progress)
+    >>> service.train_model_async(texts, config, embeddings)
 """
 
 import logging
@@ -47,15 +66,37 @@ logger = logging.getLogger(__name__)
 
 
 class BERTopicService:
-    """Service for BERTopic model training and management."""
+    """
+    Service for BERTopic model training and management.
+    
+    This service provides a high-level interface for training BERTopic models with
+    comprehensive configuration options, progress tracking, and error handling.
+    
+    Attributes:
+        current_model: The currently loaded BERTopic model instance
+        is_training: Flag indicating if training is in progress
+        progress_callback: Callback for training progress updates
+        completion_callback: Callback for training completion
+        error_callback: Callback for error handling
+        
+    Thread Safety:
+        This service uses background threads for training. Multiple training
+        operations cannot run simultaneously - attempting to start training
+        while another is in progress will result in an error callback.
+    """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        Initialize the BERTopic service.
+        
+        Sets up internal state for model management and training coordination.
+        """
         self.current_model: Optional[BERTopic] = None
-        self.is_training = False
+        self.is_training: bool = False
         self._training_thread: Optional[threading.Thread] = None
-        self._cancel_training = False
+        self._cancel_training: bool = False
 
-        # Callbacks
+        # Callbacks for UI integration
         self.progress_callback: Optional[Callable[[TopicModelingProgress], None]] = None
         self.completion_callback: Optional[Callable[[TopicResult], None]] = None
         self.error_callback: Optional[Callable[[str], None]] = None
@@ -67,8 +108,18 @@ class BERTopicService:
         progress_callback: Optional[Callable[[TopicModelingProgress], None]] = None,
         completion_callback: Optional[Callable[[TopicResult], None]] = None,
         error_callback: Optional[Callable[[str], None]] = None,
-    ):
-        """Set callback functions for training progress and completion."""
+    ) -> None:
+        """
+        Set callback functions for training events.
+        
+        Args:
+            progress_callback: Called with TopicModelingProgress during training
+            completion_callback: Called with TopicResult when training completes
+            error_callback: Called with error message string if training fails
+            
+        Note:
+            Callbacks are called from the background training thread.
+        """
         self.progress_callback = progress_callback
         self.completion_callback = completion_callback
         self.error_callback = error_callback
@@ -78,9 +129,24 @@ class BERTopicService:
         texts: List[str],
         config: TopicModelConfig,
         embeddings: Optional[np.ndarray] = None,
-        embedding_model=None,
+        embedding_model: Optional[Any] = None,
     ) -> None:
-        """Start model training in background thread."""
+        """
+        Start model training in a background thread.
+        
+        Args:
+            texts: List of documents to analyze
+            config: Topic modeling configuration with all parameters
+            embeddings: Pre-computed embeddings (optional, will compute if None)
+            embedding_model: Custom embedding model (optional)
+            
+        Raises:
+            ValueError: If training is already in progress (via error callback)
+            
+        Note:
+            This method returns immediately. Use callbacks to track progress
+            and completion. Only one training operation can run at a time.
+        """
         if self.is_training:
             if self.error_callback:
                 self.error_callback("Training already in progress")
@@ -98,7 +164,16 @@ class BERTopicService:
         logger.info("Started background topic modeling training")
 
     def cancel_training(self) -> None:
-        """Cancel ongoing training."""
+        """
+        Cancel ongoing training operation.
+        
+        Sets a cancellation flag that is checked during training stages.
+        The training thread will exit gracefully at the next checkpoint.
+        
+        Note:
+            Cancellation is not immediate - it may take time for the training
+            thread to check the flag and exit cleanly.
+        """
         if self.is_training:
             self._cancel_training = True
             logger.info("Training cancellation requested")

@@ -1,11 +1,15 @@
 """
 Logging configuration utilities.
+
+This module provides centralized logging configuration for the application,
+including file handlers for different log types and formatters.
 """
 import logging
 import os
 from pathlib import Path
+from typing import Optional
 
-def setup_logging(log_level=logging.INFO):
+def setup_logging(log_level: int = logging.INFO) -> None:
     """
     Set up logging configuration for the application.
     

@@ -1,5 +1,9 @@
 """
 Data controller for managing data import and validation workflows.
+
+This module provides the main controller for data import, validation, and processing
+operations. It coordinates between the FileIOService and DataValidationService to
+provide a high-level interface for data management.
 """
 import logging
 import pandas as pd
@@ -13,9 +17,32 @@ logger = logging.getLogger(__name__)
 
 
 class DataController:
-    """Controller for managing data import and processing workflows."""
+    """
+    Controller for managing data import and processing workflows.
     
-    def __init__(self):
+    This controller provides a high-level interface for data operations including:
+    - File loading and format detection
+    - Data validation and quality assessment
+    - Column selection and text combination
+    - Progress tracking and status updates
+    
+    The controller coordinates between multiple services and maintains state
+    for the current dataset, metadata, and configuration.
+    
+    Attributes:
+        current_data: The currently loaded pandas DataFrame
+        current_metadata: Metadata about the loaded file
+        current_validation: Results from data validation
+        data_config: Configuration for data processing
+    """
+    
+    def __init__(self) -> None:
+        """
+        Initialize the data controller.
+        
+        Sets up the required services and initializes internal state for
+        data management and processing operations.
+        """
         self.file_io_service = FileIOService()
         self.validation_service = DataValidationService()
         self.current_data: Optional[pd.DataFrame] = None
@@ -27,20 +54,20 @@ class DataController:
         self.on_progress_update: Optional[Callable[[str, float], None]] = None
         self.on_status_update: Optional[Callable[[str], None]] = None
     
-    def set_progress_callback(self, callback: Callable[[str, float], None]):
+    def set_progress_callback(self, callback: Callable[[str, float], None]) -> None:
         """Set callback for progress updates."""
         self.on_progress_update = callback
     
-    def set_status_callback(self, callback: Callable[[str], None]):
+    def set_status_callback(self, callback: Callable[[str], None]) -> None:
         """Set callback for status updates."""
         self.on_status_update = callback
     
-    def _update_progress(self, message: str, progress: float):
+    def _update_progress(self, message: str, progress: float) -> None:
         """Update progress if callback is set."""
         if self.on_progress_update:
             self.on_progress_update(message, progress)
     
-    def _update_status(self, message: str):
+    def _update_status(self, message: str) -> None:
         """Update status if callback is set."""
         if self.on_status_update:
             self.on_status_update(message)
