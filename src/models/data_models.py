@@ -26,6 +26,12 @@ class FileMetadata:
     has_header: bool = True
     delimiter: Optional[str] = None
     preview_data: Optional[pd.DataFrame] = None
+    
+    # Streaming and memory optimization attributes
+    supports_streaming: bool = False
+    is_estimate: bool = False  # True if row_count is estimated
+    is_sample: bool = False  # True if this metadata is from a sample
+    sample_size: Optional[int] = None  # Size of sample if is_sample=True
 
     @property
     def file_size_mb(self) -> float:

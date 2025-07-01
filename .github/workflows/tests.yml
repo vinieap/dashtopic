@@ -96,7 +96,7 @@ jobs:
 
     - name: Archive test results
       if: always()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: test-results-${{ matrix.os }}-${{ matrix.python-version }}
         path: |
@@ -129,7 +129,7 @@ jobs:
         python run_tests.py --benchmark --verbose
 
     - name: Archive benchmark results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: benchmark-results
         path: .benchmarks/
@@ -163,7 +163,7 @@ jobs:
       continue-on-error: true
 
     - name: Upload security reports
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: security-reports
         path: |

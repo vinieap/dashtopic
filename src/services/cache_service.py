@@ -12,6 +12,8 @@ import numpy as np
 import shutil
 
 from ..models.data_models import CacheInfo, ModelInfo, DataConfig
+from ..utils.compressed_cache import CompressedCache, CompressionMethod
+from ..utils.memory_manager import MemoryOptimizer, get_memory_stats
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +21,15 @@ logger = logging.getLogger(__name__)
 class CacheService:
     """Service for caching embeddings and managing cache lifecycle."""
     
-    def __init__(self, cache_dir: Optional[str] = None, max_cache_size_gb: float = 5.0):
+    def __init__(self, cache_dir: Optional[str] = None, max_cache_size_gb: float = 5.0,
+                 enable_compression: bool = True, compression_method: CompressionMethod = CompressionMethod.LZ4):
         """Initialize the cache service.
         
         Args:
             cache_dir: Directory for storing cache files
             max_cache_size_gb: Maximum cache size in gigabytes
+            enable_compression: Whether to enable compressed caching
+            compression_method: Default compression method
         """
         self.cache_dir = Path(cache_dir or Path.home() / ".bertopic_app" / "cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -33,8 +38,24 @@ class CacheService:
         self.cache_index_file = self.cache_dir / "cache_index.json"
         self._cache_index: Dict[str, CacheInfo] = {}
         
+        # Initialize compressed cache
+        self.enable_compression = enable_compression
+        if enable_compression:
+            # Reserve 80% of cache size for compressed cache (in-memory + disk)
+            compressed_cache_mb = max_cache_size_gb * 1024 * 0.8
+            self.compressed_cache = CompressedCache(
+                max_memory_mb=compressed_cache_mb * 0.3,  # 30% in memory
+                default_compression=compression_method,
+                enable_disk_cache=True,
+                disk_cache_dir=str(self.cache_dir / "compressed"),
+                auto_optimize=True
+            )
+        else:
+            self.compressed_cache = None
+        
         logger.info(f"Cache service initialized with cache dir: {self.cache_dir}")
         logger.info(f"Max cache size: {max_cache_size_gb:.1f} GB")
+        logger.info(f"Compression enabled: {enable_compression}")
         
         # Load existing cache index
         self._load_cache_index()
@@ -419,4 +440,209 @@ class CacheService:
         """
         # Create hash of all texts
         combined_text = "".join(texts)
-        return hashlib.sha256(combined_text.encode('utf-8')).hexdigest()[:16] 
+        return hashlib.sha256(combined_text.encode('utf-8')).hexdigest()[:16]
+    
+    def get_cached_embeddings_fast(self, cache_key: str) -> Optional[Tuple[np.ndarray, List[str]]]:
+        """Retrieve cached embeddings using compressed cache (faster).
+        
+        Args:
+            cache_key: Cache key to lookup
+            
+        Returns:
+            Tuple of (embeddings, texts) if found, None otherwise
+        """
+        if not self.enable_compression or not self.compressed_cache:
+            return self.get_cached_embeddings(cache_key)
+        
+        try:
+            # Try compressed cache first
+            cached_data = self.compressed_cache.get(cache_key)
+            if cached_data is not None:
+                logger.info(f"Fast cache hit: {cache_key}")
+                return cached_data['embeddings'], cached_data['texts']
+            
+            # Fallback to regular cache
+            logger.debug(f"Fast cache miss, trying regular cache: {cache_key}")
+            regular_result = self.get_cached_embeddings(cache_key)
+            
+            # If found in regular cache, promote to compressed cache
+            if regular_result is not None:
+                embeddings, texts = regular_result
+                self._promote_to_compressed_cache(cache_key, embeddings, texts)
+            
+            return regular_result
+            
+        except Exception as e:
+            logger.error(f"Error in fast cache retrieval: {e}")
+            return self.get_cached_embeddings(cache_key)
+    
+    def save_embeddings_compressed(self, cache_key: str, embeddings: np.ndarray, texts: List[str],
+                                 model_info: ModelInfo, data_hash: str, 
+                                 compression: Optional[CompressionMethod] = None) -> bool:
+        """Save embeddings using compressed cache.
+        
+        Args:
+            cache_key: Cache key for storage
+            embeddings: Embeddings array
+            texts: Corresponding texts
+            model_info: Model information
+            data_hash: Hash of the source data
+            compression: Specific compression method (optional)
+            
+        Returns:
+            True if saved successfully
+        """
+        if not self.enable_compression or not self.compressed_cache:
+            return self.save_embeddings(cache_key, embeddings, texts, model_info, data_hash)
+        
+        try:
+            # Prepare data for compressed caching
+            cache_data = {
+                'embeddings': embeddings,
+                'texts': texts,
+                'model_info': {
+                    'model_name': model_info.model_name,
+                    'model_path': model_info.model_path,
+                    'embedding_dimension': model_info.embedding_dimension
+                },
+                'creation_time': datetime.now(),
+                'data_hash': data_hash
+            }
+            
+            # Optimize embeddings memory usage
+            optimized_embeddings = MemoryOptimizer.optimize_numpy_array(embeddings)
+            cache_data['embeddings'] = optimized_embeddings
+            
+            logger.info(f"Saving to compressed cache: {cache_key}")
+            memory_before = get_memory_stats()
+            
+            # Save to compressed cache
+            success = self.compressed_cache.put(
+                cache_key, 
+                cache_data, 
+                compression=compression,
+                ttl_seconds=30*24*3600  # 30 days TTL
+            )
+            
+            if success:
+                memory_after = get_memory_stats()
+                memory_change = memory_after.process_mb - memory_before.process_mb
+                
+                logger.info(f"Compressed cache save successful: {cache_key}, "
+                           f"memory change: {memory_change:+.1f} MB")
+                
+                # Also save to regular cache as backup
+                self.save_embeddings(cache_key, embeddings, texts, model_info, data_hash)
+                
+                return True
+            else:
+                logger.warning(f"Compressed cache save failed, using regular cache: {cache_key}")
+                return self.save_embeddings(cache_key, embeddings, texts, model_info, data_hash)
+                
+        except Exception as e:
+            logger.error(f"Error in compressed cache save: {e}")
+            return self.save_embeddings(cache_key, embeddings, texts, model_info, data_hash)
+    
+    def _promote_to_compressed_cache(self, cache_key: str, embeddings: np.ndarray, texts: List[str]):
+        """Promote regular cache entry to compressed cache.
+        
+        Args:
+            cache_key: Cache key
+            embeddings: Embeddings array
+            texts: Text list
+        """
+        if not self.enable_compression or not self.compressed_cache:
+            return
+        
+        try:
+            # Get metadata from regular cache
+            if cache_key not in self._cache_index:
+                return
+            
+            cache_info = self._cache_index[cache_key]
+            
+            # Create data for compressed cache
+            cache_data = {
+                'embeddings': embeddings,
+                'texts': texts,
+                'model_info': {'model_name': cache_info.model_name},
+                'creation_time': cache_info.creation_time,
+                'data_hash': cache_info.data_hash
+            }
+            
+            # Save to compressed cache
+            self.compressed_cache.put(cache_key, cache_data, ttl_seconds=30*24*3600)
+            logger.debug(f"Promoted to compressed cache: {cache_key}")
+            
+        except Exception as e:
+            logger.warning(f"Error promoting to compressed cache: {e}")
+    
+    def get_enhanced_cache_stats(self) -> Dict[str, Any]:
+        """Get enhanced cache statistics including compression stats.
+        
+        Returns:
+            Dictionary with comprehensive cache statistics
+        """
+        regular_stats = self.get_cache_stats()
+        
+        if self.enable_compression and self.compressed_cache:
+            compressed_stats = self.compressed_cache.get_stats()
+            
+            # Combine statistics
+            enhanced_stats = {
+                **regular_stats,
+                'compression_enabled': True,
+                'compressed_cache': compressed_stats,
+                'total_cache_efficiency': {
+                    'regular_cache_mb': regular_stats['total_size_mb'],
+                    'compressed_cache_mb': compressed_stats['memory_usage_mb'],
+                    'total_memory_mb': regular_stats['total_size_mb'] + compressed_stats['memory_usage_mb'],
+                    'compression_savings_mb': compressed_stats.get('total_uncompressed_bytes', 0) / 1024**2 - 
+                                            compressed_stats.get('total_compressed_bytes', 0) / 1024**2,
+                    'hit_rate_improvement': compressed_stats['hit_rate'] - 
+                                          (regular_stats.get('hit_rate', 0) if 'hit_rate' in regular_stats else 0)
+                }
+            }
+        else:
+            enhanced_stats = {
+                **regular_stats,
+                'compression_enabled': False,
+                'compressed_cache': None
+            }
+        
+        return enhanced_stats
+    
+    def optimize_cache(self):
+        """Run comprehensive cache optimization."""
+        logger.info("Running cache optimization")
+        
+        # Clean up expired entries in regular cache
+        removed_count = self.cleanup_expired_cache()
+        logger.info(f"Removed {removed_count} expired regular cache entries")
+        
+        # Optimize compressed cache
+        if self.enable_compression and self.compressed_cache:
+            self.compressed_cache.optimize()
+            logger.info("Compressed cache optimization completed")
+        
+        # Run memory optimization
+        MemoryOptimizer.force_garbage_collection()
+        
+        # Log final statistics
+        stats = self.get_enhanced_cache_stats()
+        logger.info(f"Cache optimization completed. "
+                   f"Regular: {stats['total_files']} files, "
+                   f"Compressed: {stats['compressed_cache']['total_entries'] if stats['compressed_cache'] else 0} entries")
+    
+    def clear_all_caches(self):
+        """Clear both regular and compressed caches."""
+        logger.info("Clearing all caches")
+        
+        # Clear regular cache
+        self.clear_cache()
+        
+        # Clear compressed cache
+        if self.enable_compression and self.compressed_cache:
+            self.compressed_cache.clear()
+        
+        logger.info("All caches cleared") 
