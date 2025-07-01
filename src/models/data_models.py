@@ -201,7 +201,19 @@ class EmbeddingConfig:
     @property
     def is_configured(self) -> bool:
         """Check if embedding configuration is valid."""
-        return self.model_info is not None and self.model_info.is_loaded
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        if self.model_info is None:
+            logger.debug("EmbeddingConfig.is_configured: model_info is None")
+            return False
+        
+        is_loaded = self.model_info.is_loaded
+        logger.debug(f"EmbeddingConfig.is_configured: model_info.is_loaded = {is_loaded}")
+        logger.debug(f"EmbeddingConfig.is_configured: model_info.model_type = {self.model_info.model_type}")
+        logger.debug(f"EmbeddingConfig.is_configured: model_info.model_name = {self.model_info.model_name}")
+        
+        return is_loaded
 
 
 @dataclass
@@ -494,7 +506,17 @@ class TopicModelConfig:
     @property
     def is_configured(self) -> bool:
         """Check if configuration is valid for training."""
-        return self.embedding_config is not None and self.embedding_config.is_configured
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        if self.embedding_config is None:
+            logger.debug("TopicModelConfig.is_configured: embedding_config is None")
+            return False
+        
+        embedding_configured = self.embedding_config.is_configured
+        logger.debug(f"TopicModelConfig.is_configured: embedding_config.is_configured = {embedding_configured}")
+        
+        return embedding_configured
 
     @property
     def estimated_memory_gb(self) -> float:

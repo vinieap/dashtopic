@@ -205,7 +205,17 @@ class BERTopicService:
         embedding_model=None,
     ) -> Optional[TopicResult]:
         """Train a BERTopic model with the given configuration."""
+        logger.debug("BERTopic train_model: Starting configuration validation")
+        logger.debug(f"BERTopic train_model: config.is_configured = {config.is_configured}")
+        
         if not config.is_configured:
+            logger.error("BERTopic train_model: Configuration validation failed")
+            logger.error(f"BERTopic train_model: embedding_config exists = {config.embedding_config is not None}")
+            if config.embedding_config:
+                logger.error(f"BERTopic train_model: model_info exists = {config.embedding_config.model_info is not None}")
+                if config.embedding_config.model_info:
+                    logger.error(f"BERTopic train_model: model_info.is_loaded = {config.embedding_config.model_info.is_loaded}")
+                    logger.error(f"BERTopic train_model: model_info.model_type = {config.embedding_config.model_info.model_type}")
             raise ValueError("Invalid topic modeling configuration")
 
         start_time = time.time()
@@ -257,11 +267,14 @@ class BERTopicService:
             final_embedding_model = embedding_model
 
             # If no embedding model provided but representation models are configured
+            # Skip loading for precomputed embeddings during optimization
             if (
                 embedding_model is None
                 and config.representation_config.use_representation
                 and config.embedding_config
                 and config.embedding_config.model_info
+                and config.embedding_config.model_info.model_type != "precomputed"
+                and config.embedding_config.model_info.is_loaded
             ):
                 logger.info("Loading embedding model for representation models")
                 try:

@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 class ModelConfigTab:
     """Tab for configuring embedding models and clustering parameters."""
 
-    def __init__(self, parent):
+    def __init__(self, parent, embedding_controller=None):
         self.parent = parent
-        self.embedding_controller = EmbeddingController()
+        self.embedding_controller = embedding_controller or EmbeddingController()
 
         # State variables
         self.available_models: List[ModelInfo] = []
@@ -421,10 +421,17 @@ class ModelConfigTab:
 
     def select_model(self, model: ModelInfo):
         """Select a model for configuration."""
-        self.selected_model = model
-        self._update_model_info()
-        self._update_action_buttons()
-        logger.info(f"Selected model: {model.model_name}")
+        try:
+            logger.debug(f"Selecting model: {model.model_name} (is_loaded: {model.is_loaded}, is_local: {model.is_local})")
+            self.selected_model = model
+            self._update_model_info()
+            self._update_action_buttons()
+            logger.info(f"Selected model: {model.model_name}")
+        except Exception as e:
+            logger.error(f"Error selecting model: {e}")
+            self.selected_model = None
+            self._update_model_info()
+            self._update_action_buttons()
 
     def _update_model_info(self):
         """Update the model information display."""
@@ -462,30 +469,44 @@ class ModelConfigTab:
 
     def _update_action_buttons(self):
         """Update the state of action buttons."""
-        if not self.selected_model:
-            self.test_model_button.configure(state="disabled")
-            self.load_model_button.configure(state="disabled")
-            self.unload_model_button.configure(state="disabled")
-            self.generate_embeddings_button.configure(state="disabled")
-            return
+        try:
+            if not self.selected_model:
+                logger.debug("No model selected - disabling all buttons")
+                self._set_all_buttons_disabled()
+                return
 
-        model = self.selected_model
+            model = self.selected_model
+            logger.debug(f"Updating buttons for model: {model.model_name}, is_loaded: {model.is_loaded}, is_local: {model.is_local}")
 
-        if model.is_loaded:
-            self.test_model_button.configure(state="normal")
-            self.load_model_button.configure(state="disabled")
-            self.unload_model_button.configure(state="normal")
-            self.generate_embeddings_button.configure(state="normal")
-        elif model.is_local:
+            if model.is_loaded:
+                logger.debug("Model is loaded - enabling test, unload, and generate buttons")
+                self.test_model_button.configure(state="normal")
+                self.load_model_button.configure(state="disabled")
+                self.unload_model_button.configure(state="normal")
+                self.generate_embeddings_button.configure(state="normal")
+            elif model.is_local:
+                logger.debug("Model is local but not loaded - enabling load button")
+                self.test_model_button.configure(state="disabled")
+                self.load_model_button.configure(state="normal")
+                self.unload_model_button.configure(state="disabled")
+                self.generate_embeddings_button.configure(state="disabled")
+            else:
+                logger.debug("Model is not local - disabling all action buttons")
+                self._set_all_buttons_disabled()
+                
+        except Exception as e:
+            logger.error(f"Error updating action buttons: {e}")
+            self._set_all_buttons_disabled()
+    
+    def _set_all_buttons_disabled(self):
+        """Helper method to disable all action buttons."""
+        try:
             self.test_model_button.configure(state="disabled")
-            self.load_model_button.configure(state="normal")
+            self.load_model_button.configure(state="disabled")
             self.unload_model_button.configure(state="disabled")
             self.generate_embeddings_button.configure(state="disabled")
-        else:
-            self.test_model_button.configure(state="disabled")
-            self.load_model_button.configure(state="disabled")
-            self.unload_model_button.configure(state="disabled")
-            self.generate_embeddings_button.configure(state="disabled")
+        except Exception as e:
+            logger.error(f"Error disabling buttons: {e}")
 
     def load_selected_model(self):
         """Load the selected model."""
@@ -512,7 +533,8 @@ class ModelConfigTab:
                             if model.model_name == self.selected_model.model_name:
                                 model.is_loaded = True
                                 break
-                        self._update_model_list(self.available_models)
+                        # Note: Don't recreate the entire model list UI as it interferes with buttons
+                        # The action buttons are already updated by _update_action_buttons() above
                         messagebox.showinfo(
                             "Success",
                             f"Model '{self.selected_model.display_name}' loaded successfully!",

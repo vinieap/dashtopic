@@ -9,6 +9,13 @@ from typing import Optional, List, Dict, Any
 import threading
 from datetime import datetime
 
+# Import tooltip utility
+try:
+    from ..utils.tooltip import add_tooltip, PARAMETER_DESCRIPTIONS
+    TOOLTIPS_AVAILABLE = True
+except ImportError:
+    TOOLTIPS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 # Import at module level to avoid circular imports
@@ -150,7 +157,7 @@ class HyperparameterTab:
         self.strategy_desc.pack(anchor="w", padx=10, pady=(0, 10))
     
     def setup_parameter_section(self):
-        """Setup parameter search space configuration."""
+        """Setup parameter search space configuration with visual grouping."""
         param_frame = ctk.CTkFrame(self.main_frame)
         param_frame.pack(fill="x", padx=10, pady=5)
         
@@ -160,63 +167,216 @@ class HyperparameterTab:
             font=ctk.CTkFont(size=16, weight="bold")
         ).pack(anchor="w", padx=10, pady=(10, 5))
         
-        # Parameter grid
-        params_grid = ctk.CTkFrame(param_frame)
-        params_grid.pack(fill="x", padx=10, pady=(0, 10))
+        # Description
+        desc_label = ctk.CTkLabel(
+            param_frame,
+            text="Configure parameters to optimize. Hover over parameter names for detailed explanations.",
+            font=ctk.CTkFont(size=11),
+            text_color="gray"
+        )
+        desc_label.pack(anchor="w", padx=10, pady=(0, 10))
         
-        # Headers
-        ctk.CTkLabel(params_grid, text="Parameter", font=ctk.CTkFont(weight="bold")).grid(
-            row=0, column=0, padx=5, pady=5, sticky="w"
-        )
-        ctk.CTkLabel(params_grid, text="Enable", font=ctk.CTkFont(weight="bold")).grid(
-            row=0, column=1, padx=5, pady=5
-        )
-        ctk.CTkLabel(params_grid, text="Min", font=ctk.CTkFont(weight="bold")).grid(
-            row=0, column=2, padx=5, pady=5
-        )
-        ctk.CTkLabel(params_grid, text="Max", font=ctk.CTkFont(weight="bold")).grid(
-            row=0, column=3, padx=5, pady=5
-        )
-        ctk.CTkLabel(params_grid, text="Step", font=ctk.CTkFont(weight="bold")).grid(
-            row=0, column=4, padx=5, pady=5
-        )
+        # Parameter groups with visual separation
+        self._setup_clustering_parameters(param_frame)
+        self._setup_dimensionality_parameters(param_frame)
+        self._setup_vectorization_parameters(param_frame)
+        self._setup_topic_parameters(param_frame)
         
-        # Parameter definitions
+        # Total combinations label
+        self.combinations_label = ctk.CTkLabel(
+            param_frame,
+            text="Total combinations: calculating...",
+            font=ctk.CTkFont(size=12, weight="bold")
+        )
+        self.combinations_label.pack(anchor="w", padx=10, pady=(10, 10))
+        
+        # Update combinations on parameter change
+        self._update_combinations_count()
+    
+    def _setup_clustering_parameters(self, parent):
+        """Setup HDBSCAN clustering parameters."""
+        group_frame = ctk.CTkFrame(parent)
+        group_frame.pack(fill="x", padx=10, pady=(0, 5))
+        
+        # Group header
+        header_frame = ctk.CTkFrame(group_frame)
+        header_frame.pack(fill="x", padx=5, pady=5)
+        
+        ctk.CTkLabel(
+            header_frame,
+            text="🔗 Clustering Parameters (HDBSCAN)",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#4CAF50"
+        ).pack(side="left", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            header_frame,
+            text="Controls how documents are grouped into clusters",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        ).pack(side="left", padx=(10, 0), pady=5)
+        
+        # Parameters grid
+        params_grid = ctk.CTkFrame(group_frame)
+        params_grid.pack(fill="x", padx=5, pady=(0, 5))
+        
+        self._setup_parameter_headers(params_grid)
+        
         parameters = [
             ("min_cluster_size", "Min Cluster Size", 5, 50, 5),
             ("min_samples", "Min Samples", 1, 25, 2),
+        ]
+        
+        self._create_parameter_widgets(params_grid, parameters, 1)
+    
+    def _setup_dimensionality_parameters(self, parent):
+        """Setup UMAP dimensionality reduction parameters."""
+        group_frame = ctk.CTkFrame(parent)
+        group_frame.pack(fill="x", padx=10, pady=(0, 5))
+        
+        # Group header
+        header_frame = ctk.CTkFrame(group_frame)
+        header_frame.pack(fill="x", padx=5, pady=5)
+        
+        ctk.CTkLabel(
+            header_frame,
+            text="📉 Dimensionality Reduction (UMAP)",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#2196F3"
+        ).pack(side="left", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            header_frame,
+            text="Reduces high-dimensional embeddings for clustering",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        ).pack(side="left", padx=(10, 0), pady=5)
+        
+        # Parameters grid
+        params_grid = ctk.CTkFrame(group_frame)
+        params_grid.pack(fill="x", padx=5, pady=(0, 5))
+        
+        self._setup_parameter_headers(params_grid)
+        
+        parameters = [
             ("n_neighbors", "N Neighbors", 5, 50, 5),
             ("min_dist", "Min Distance", 0.0, 0.5, 0.05),
+        ]
+        
+        self._create_parameter_widgets(params_grid, parameters, 1)
+    
+    def _setup_vectorization_parameters(self, parent):
+        """Setup text vectorization parameters."""
+        group_frame = ctk.CTkFrame(parent)
+        group_frame.pack(fill="x", padx=10, pady=(0, 5))
+        
+        # Group header
+        header_frame = ctk.CTkFrame(group_frame)
+        header_frame.pack(fill="x", padx=5, pady=5)
+        
+        ctk.CTkLabel(
+            header_frame,
+            text="📝 Text Vectorization",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#FF9800"
+        ).pack(side="left", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            header_frame,
+            text="Controls how text is converted to numerical features",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        ).pack(side="left", padx=(10, 0), pady=5)
+        
+        # Parameters grid
+        params_grid = ctk.CTkFrame(group_frame)
+        params_grid.pack(fill="x", padx=5, pady=(0, 5))
+        
+        self._setup_parameter_headers(params_grid)
+        
+        parameters = [
             ("min_df", "Min Doc Frequency", 1, 10, 1),
+        ]
+        
+        self._create_parameter_widgets(params_grid, parameters, 1)
+    
+    def _setup_topic_parameters(self, parent):
+        """Setup BERTopic-specific parameters."""
+        group_frame = ctk.CTkFrame(parent)
+        group_frame.pack(fill="x", padx=10, pady=(0, 5))
+        
+        # Group header
+        header_frame = ctk.CTkFrame(group_frame)
+        header_frame.pack(fill="x", padx=5, pady=5)
+        
+        ctk.CTkLabel(
+            header_frame,
+            text="🎯 Topic Model Configuration",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color="#9C27B0"
+        ).pack(side="left", padx=10, pady=5)
+        
+        ctk.CTkLabel(
+            header_frame,
+            text="Controls topic extraction and representation",
+            font=ctk.CTkFont(size=10),
+            text_color="gray"
+        ).pack(side="left", padx=(10, 0), pady=5)
+        
+        # Parameters grid
+        params_grid = ctk.CTkFrame(group_frame)
+        params_grid.pack(fill="x", padx=5, pady=(0, 5))
+        
+        self._setup_parameter_headers(params_grid)
+        
+        parameters = [
             ("top_n_words", "Top N Words", 5, 20, 5),
         ]
         
-        row = 1
-        for param_name, display_name, default_min, default_max, default_step in parameters:
-            # Parameter name
-            ctk.CTkLabel(params_grid, text=display_name).grid(
-                row=row, column=0, padx=5, pady=2, sticky="w"
+        self._create_parameter_widgets(params_grid, parameters, 1)
+    
+    def _setup_parameter_headers(self, grid_frame):
+        """Setup column headers for parameter grid."""
+        headers = ["Parameter", "Enable", "Min", "Max", "Step"]
+        for col, header in enumerate(headers):
+            label = ctk.CTkLabel(
+                grid_frame, 
+                text=header, 
+                font=ctk.CTkFont(weight="bold", size=11)
             )
+            label.grid(row=0, column=col, padx=5, pady=5, sticky="w")
+    
+    def _create_parameter_widgets(self, grid_frame, parameters, start_row):
+        """Create parameter widgets with tooltips."""
+        row = start_row
+        for param_name, display_name, default_min, default_max, default_step in parameters:
+            # Parameter name with tooltip
+            param_label = ctk.CTkLabel(grid_frame, text=display_name)
+            param_label.grid(row=row, column=0, padx=5, pady=2, sticky="w")
+            
+            # Add tooltip if available
+            if TOOLTIPS_AVAILABLE and param_name in PARAMETER_DESCRIPTIONS:
+                add_tooltip(param_label, PARAMETER_DESCRIPTIONS[param_name])
             
             # Enable checkbox
-            enabled_var = ctk.BooleanVar(value=True if row <= 3 else False)
+            enabled_var = ctk.BooleanVar(value=True)  # Default to enabled
             enabled_check = ctk.CTkCheckBox(
-                params_grid, text="", variable=enabled_var, width=20
+                grid_frame, text="", variable=enabled_var, width=20
             )
             enabled_check.grid(row=row, column=1, padx=5, pady=2)
             
             # Min value
-            min_entry = ctk.CTkEntry(params_grid, width=60)
+            min_entry = ctk.CTkEntry(grid_frame, width=60)
             min_entry.insert(0, str(default_min))
             min_entry.grid(row=row, column=2, padx=5, pady=2)
             
             # Max value
-            max_entry = ctk.CTkEntry(params_grid, width=60)
+            max_entry = ctk.CTkEntry(grid_frame, width=60)
             max_entry.insert(0, str(default_max))
             max_entry.grid(row=row, column=3, padx=5, pady=2)
             
             # Step value
-            step_entry = ctk.CTkEntry(params_grid, width=60)
+            step_entry = ctk.CTkEntry(grid_frame, width=60)
             step_entry.insert(0, str(default_step))
             step_entry.grid(row=row, column=4, padx=5, pady=2)
             
@@ -229,18 +389,16 @@ class HyperparameterTab:
                 "type": "float" if param_name in ["min_dist"] else "int"
             }
             
+            # Bind events for live updates
+            enabled_var.trace_add("write", lambda *args: self._update_combinations_count())
+            min_entry.bind("<KeyRelease>", lambda e: self._update_combinations_count())
+            max_entry.bind("<KeyRelease>", lambda e: self._update_combinations_count())
+            step_entry.bind("<KeyRelease>", lambda e: self._update_combinations_count())
+            min_entry.bind("<FocusOut>", lambda e: self._update_combinations_count())
+            max_entry.bind("<FocusOut>", lambda e: self._update_combinations_count())
+            step_entry.bind("<FocusOut>", lambda e: self._update_combinations_count())
+            
             row += 1
-        
-        # Total combinations label
-        self.combinations_label = ctk.CTkLabel(
-            param_frame,
-            text="Total combinations: calculating...",
-            font=ctk.CTkFont(size=12)
-        )
-        self.combinations_label.pack(anchor="w", padx=10, pady=(0, 10))
-        
-        # Update combinations on parameter change
-        self._update_combinations_count()
     
     def setup_metrics_section(self):
         """Setup metrics selection."""
@@ -562,29 +720,95 @@ class HyperparameterTab:
             self.patience_entry.configure(state="disabled")
     
     def _update_combinations_count(self):
-        """Update total combinations count for grid search."""
-        if self.strategy_var.get() != "grid_search":
-            self.combinations_label.configure(text="")
-            return
-        
-        total = 1
-        for param_name, widgets in self.param_widgets.items():
-            if widgets["enabled"].get():
-                try:
-                    min_val = float(widgets["min"].get())
-                    max_val = float(widgets["max"].get())
-                    step_val = float(widgets["step"].get())
-                    
-                    if widgets["type"] == "int":
-                        count = len(range(int(min_val), int(max_val) + 1, int(step_val)))
+        """Update total combinations count for the search space."""
+        try:
+            strategy = self.strategy_var.get()
+            
+            # Calculate total combinations for enabled parameters
+            total = 1
+            invalid_params = []
+            enabled_count = 0
+            
+            for param_name, widgets in self.param_widgets.items():
+                if widgets["enabled"].get():
+                    enabled_count += 1
+                    try:
+                        min_val = float(widgets["min"].get())
+                        max_val = float(widgets["max"].get())
+                        step_val = float(widgets["step"].get())
+                        
+                        # Validation
+                        if min_val >= max_val:
+                            invalid_params.append(f"{param_name}: min >= max")
+                            continue
+                        if step_val <= 0:
+                            invalid_params.append(f"{param_name}: step <= 0")
+                            continue
+                        
+                        # Calculate combinations for this parameter
+                        if widgets["type"] == "int":
+                            if step_val != int(step_val):
+                                invalid_params.append(f"{param_name}: non-integer step for integer parameter")
+                                continue
+                            count = len(range(int(min_val), int(max_val) + 1, int(step_val)))
+                        else:
+                            count = int((max_val - min_val) / step_val) + 1
+                        
+                        if count <= 0:
+                            invalid_params.append(f"{param_name}: no valid values")
+                            continue
+                            
+                        total *= count
+                        
+                    except ValueError as e:
+                        invalid_params.append(f"{param_name}: invalid number format")
+                    except Exception as e:
+                        invalid_params.append(f"{param_name}: {str(e)}")
+            
+            # Display results based on strategy and validation
+            if invalid_params:
+                self.combinations_label.configure(
+                    text=f"❌ Invalid parameters: {'; '.join(invalid_params[:2])}{'...' if len(invalid_params) > 2 else ''}",
+                    text_color="red"
+                )
+            elif enabled_count == 0:
+                self.combinations_label.configure(
+                    text="❌ No parameters enabled for optimization",
+                    text_color="red"
+                )
+            else:
+                if strategy == "grid_search":
+                    if total > 1000000:  # 1 million combinations warning
+                        self.combinations_label.configure(
+                            text=f"⚠️  Grid search: {total:,} combinations (very large!)",
+                            text_color="orange"
+                        )
                     else:
-                        count = int((max_val - min_val) / step_val) + 1
+                        self.combinations_label.configure(
+                            text=f"✅ Grid search: {total:,} combinations",
+                            text_color="green"
+                        )
+                elif strategy == "random_search":
+                    self.combinations_label.configure(
+                        text=f"✅ Random search: {total:,} possible combinations (will sample subset)",
+                        text_color="green"
+                    )
+                elif strategy == "bayesian":
+                    self.combinations_label.configure(
+                        text=f"✅ Bayesian optimization: {total:,} possible combinations (intelligent sampling)",
+                        text_color="green"
+                    )
+                else:
+                    self.combinations_label.configure(
+                        text=f"✅ Search space: {total:,} combinations",
+                        text_color="green"
+                    )
                     
-                    total *= count
-                except:
-                    pass
-        
-        self.combinations_label.configure(text=f"Total combinations: {total:,}")
+        except Exception as e:
+            self.combinations_label.configure(
+                text=f"❌ Error calculating combinations: {str(e)}",
+                text_color="red"
+            )
     
     def _start_optimization(self):
         """Start hyperparameter optimization."""

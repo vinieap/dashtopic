@@ -183,7 +183,9 @@ class MainWindow(ctk.CTk):
         # Initialize tab content
         try:
             self.data_import_tab = DataImportTab(self.tab_view.tab("Data Import"))
-            self.model_config_tab = ModelConfigTab(self.tab_view.tab("Model Config"))
+            self.model_config_tab = ModelConfigTab(
+                self.tab_view.tab("Model Config"), self.embedding_controller
+            )
             self.topic_modeling_tab = TopicModelingTab(
                 self.tab_view.tab("Topic Modeling")
             )

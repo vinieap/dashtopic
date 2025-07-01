@@ -95,6 +95,23 @@ class HyperparameterOptimizationService:
         )
         
         try:
+            # Validate input data
+            if not isinstance(embeddings, np.ndarray):
+                embeddings = np.array(embeddings)
+            
+            if len(documents) != len(embeddings):
+                raise ValueError(f"Documents ({len(documents)}) and embeddings ({len(embeddings)}) length mismatch")
+            
+            if embeddings.ndim != 2:
+                raise ValueError(f"Embeddings must be 2D array, got shape {embeddings.shape}")
+            
+            logger.info(f"Starting optimization with {len(documents)} documents, embedding shape: {embeddings.shape}")
+            
+            # Temporarily set debug level for detailed logging
+            import logging
+            original_level = logger.level
+            logger.setLevel(logging.DEBUG)
+            
             # Sample data if requested
             if config.sample_size and config.sample_size < len(documents):
                 indices = np.random.choice(
@@ -126,6 +143,9 @@ class HyperparameterOptimizationService:
             if self.should_stop:
                 self.current_optimization.stopped_early = True
                 self.current_optimization.stopping_reason = "User cancelled"
+            
+            # Restore original log level
+            logger.setLevel(original_level)
             
             return self.current_optimization
             
@@ -322,7 +342,18 @@ class HyperparameterOptimizationService:
         
         try:
             # Create topic model config from parameters
+            logger.debug(f"Run {run_id}: Creating topic config with params: {list(params.keys())}")
             topic_config = self._create_topic_config(params)
+            
+            # Log config validation details
+            logger.debug(f"Run {run_id}: Topic config created")
+            logger.debug(f"Run {run_id}: embedding_config exists: {topic_config.embedding_config is not None}")
+            if topic_config.embedding_config:
+                logger.debug(f"Run {run_id}: model_info exists: {topic_config.embedding_config.model_info is not None}")
+                if topic_config.embedding_config.model_info:
+                    logger.debug(f"Run {run_id}: model_info.is_loaded: {topic_config.embedding_config.model_info.is_loaded}")
+                    logger.debug(f"Run {run_id}: model_info.model_type: {topic_config.embedding_config.model_info.model_type}")
+            logger.debug(f"Run {run_id}: is_configured: {topic_config.is_configured}")
             
             # Measure memory before
             process = psutil.Process()
@@ -331,11 +362,25 @@ class HyperparameterOptimizationService:
             # Train model
             start_time = time.time()
             
+            # Validate embeddings and documents match
+            if len(documents) != len(embeddings):
+                raise ValueError(f"Mismatch: {len(documents)} documents vs {len(embeddings)} embeddings")
+            
+            # Ensure embeddings are numpy array
+            if not isinstance(embeddings, np.ndarray):
+                embeddings = np.array(embeddings)
+            
+            # Validate embeddings shape
+            if embeddings.ndim != 2:
+                raise ValueError(f"Embeddings must be 2D array, got shape {embeddings.shape}")
+                
+            logger.debug(f"Training with {len(documents)} docs, embeddings shape: {embeddings.shape}")
+            
             # Use the service to train the model
-            topic_result = self.bertopic_service.fit_transform(
-                embeddings=embeddings,
-                documents=documents,
-                config=topic_config
+            topic_result = self.bertopic_service.train_model(
+                texts=documents,
+                config=topic_config,
+                embeddings=embeddings
             )
             
             training_time = time.time() - start_time
@@ -343,6 +388,10 @@ class HyperparameterOptimizationService:
             # Measure memory after
             memory_after = process.memory_info().rss / 1024 / 1024
             run.memory_usage_mb = memory_after - memory_before
+            
+            # Check if topic result is valid
+            if topic_result is None:
+                raise ValueError("Topic modeling returned None result")
             
             # Store topic result
             run.topic_result = topic_result
@@ -376,6 +425,18 @@ class HyperparameterOptimizationService:
         vectorization_config = VectorizationConfig()
         umap_config = UMAPConfig()
         
+        # Create embedding config for precomputed embeddings - no model loading needed
+        from ..models.data_models import EmbeddingConfig, ModelInfo
+        embedding_config = EmbeddingConfig()
+        # Set a dummy model info to satisfy validation - mark as loaded since embeddings are already available
+        embedding_config.model_info = ModelInfo(
+            model_name="precomputed_embeddings",
+            model_path="",  # Empty path to avoid loading
+            model_type="precomputed",
+            is_loaded=True,  # Mark as loaded since embeddings are precomputed
+            description="Precomputed embeddings for optimization"
+        )
+        
         # Clustering parameters
         if "clustering_algorithm" in params:
             clustering_config.algorithm = params["clustering_algorithm"]
@@ -404,11 +465,18 @@ class HyperparameterOptimizationService:
         if "ngram_range" in params:
             vectorization_config.ngram_range = params["ngram_range"]
         
+        # Create representation config and disable it for optimization
+        from ..models.data_models import RepresentationConfig
+        representation_config = RepresentationConfig()
+        representation_config.use_representation = False  # Disable to avoid model loading
+        
         # BERTopic parameters
         topic_config = TopicModelConfig(
-            clustering=clustering_config,
-            vectorization=vectorization_config,
-            umap=umap_config
+            embedding_config=embedding_config,
+            clustering_config=clustering_config,
+            vectorization_config=vectorization_config,
+            umap_config=umap_config,
+            representation_config=representation_config
         )
         
         if "top_n_words" in params:
@@ -429,15 +497,32 @@ class HyperparameterOptimizationService:
         """Calculate all requested metrics."""
         results = {}
         
+        # Validate topic result
+        if not hasattr(topic_result, 'topics') or not hasattr(topic_result, 'topic_info'):
+            logger.error("Invalid topic result structure")
+            return results
+        
         # Get topic assignments
         topic_labels = topic_result.topics
+        logger.debug(f"Topic labels type: {type(topic_labels)}, shape: {getattr(topic_labels, 'shape', 'N/A')}")
+        logger.debug(f"Topic labels sample: {topic_labels[:5] if hasattr(topic_labels, '__getitem__') else 'N/A'}")
+        
+        # Ensure topic_labels is a numpy array of integers
+        if not isinstance(topic_labels, np.ndarray):
+            topic_labels = np.array(topic_labels)
+        
+        # Convert to integers if needed
+        topic_labels = topic_labels.astype(int)
         
         # Filter out outliers for some metrics
-        non_outlier_mask = np.array(topic_labels) != -1
+        non_outlier_mask = topic_labels != -1
         if np.sum(non_outlier_mask) < 2:
             # Not enough non-outlier points for clustering metrics
             logger.warning("Not enough non-outlier points for clustering metrics")
             return results
+        
+        logger.debug(f"Non-outlier count: {np.sum(non_outlier_mask)}/{len(topic_labels)}")
+        logger.debug(f"Unique topics: {np.unique(topic_labels[non_outlier_mask])}")
         
         # Calculate each metric
         for metric_type in metrics:
@@ -445,16 +530,26 @@ class HyperparameterOptimizationService:
             
             try:
                 if metric_type == MetricType.SILHOUETTE:
-                    if len(np.unique(topic_labels[non_outlier_mask])) > 1:
-                        score = silhouette_score(
-                            embeddings[non_outlier_mask],
-                            topic_labels[non_outlier_mask]
-                        )
+                    unique_topics = np.unique(topic_labels[non_outlier_mask])
+                    logger.debug(f"Unique topics for silhouette: {unique_topics}")
+                    
+                    if len(unique_topics) > 1:
+                        # Get the filtered data
+                        filtered_embeddings = embeddings[non_outlier_mask]
+                        filtered_labels = topic_labels[non_outlier_mask]
+                        
+                        logger.debug(f"Silhouette inputs - embeddings shape: {filtered_embeddings.shape}, labels shape: {filtered_labels.shape}")
+                        logger.debug(f"Label range: min={np.min(filtered_labels)}, max={np.max(filtered_labels)}")
+                        
+                        score = silhouette_score(filtered_embeddings, filtered_labels)
                         results[metric_type] = MetricResult(
                             metric_type=metric_type,
                             value=score,
                             computation_time=time.time() - start
                         )
+                        logger.debug(f"Silhouette score calculated: {score}")
+                    else:
+                        logger.warning(f"Skipping silhouette - only {len(unique_topics)} unique topics")
                 
                 elif metric_type == MetricType.CALINSKI_HARABASZ:
                     if len(np.unique(topic_labels[non_outlier_mask])) > 1:
@@ -484,7 +579,7 @@ class HyperparameterOptimizationService:
                     # Calculate topic diversity (unique words / total words)
                     all_words = set()
                     total_words = 0
-                    for topic in topic_result.topic_info.values():
+                    for topic in topic_result.topic_info:
                         words = [w for w, _ in topic.words[:10]]
                         all_words.update(words)
                         total_words += len(words)

@@ -6,6 +6,13 @@ import logging
 import customtkinter as ctk
 from typing import Optional
 
+# Import tooltip utility
+try:
+    from ..utils.tooltip import add_tooltip, PARAMETER_DESCRIPTIONS
+    TOOLTIPS_AVAILABLE = True
+except ImportError:
+    TOOLTIPS_AVAILABLE = False
+
 from ...controllers import TopicModelingController
 from ...models import (
     TopicModelConfig,
@@ -139,7 +146,11 @@ class TopicModelingTab:
         # Min cluster size
         size_frame = ctk.CTkFrame(self.clustering_params_frame)
         size_frame.pack(fill="x", pady=2)
-        ctk.CTkLabel(size_frame, text="Min Cluster Size:").pack(side="left", padx=5)
+        size_label = ctk.CTkLabel(size_frame, text="Min Cluster Size:")
+        size_label.pack(side="left", padx=5)
+        if TOOLTIPS_AVAILABLE:
+            add_tooltip(size_label, PARAMETER_DESCRIPTIONS.get("min_cluster_size", "Minimum number of documents required to form a cluster"))
+        
         self.hdbscan_min_cluster_size = ctk.CTkEntry(size_frame, width=100)
         self.hdbscan_min_cluster_size.pack(side="left", padx=5)
         self.hdbscan_min_cluster_size.insert(0, "10")
@@ -147,7 +158,10 @@ class TopicModelingTab:
         # Metric
         metric_frame = ctk.CTkFrame(self.clustering_params_frame)
         metric_frame.pack(fill="x", pady=2)
-        ctk.CTkLabel(metric_frame, text="Metric:").pack(side="left", padx=5)
+        metric_label = ctk.CTkLabel(metric_frame, text="Metric:")
+        metric_label.pack(side="left", padx=5)
+        if TOOLTIPS_AVAILABLE:
+            add_tooltip(metric_label, PARAMETER_DESCRIPTIONS.get("metric", "Distance metric for measuring similarity between documents"))
         self.hdbscan_metric = ctk.CTkOptionMenu(
             metric_frame, values=["euclidean", "cosine", "manhattan"]
         )
@@ -206,7 +220,10 @@ class TopicModelingTab:
         ngram_frame = ctk.CTkFrame(vec_frame)
         ngram_frame.pack(fill="x", padx=10, pady=5)
 
-        ctk.CTkLabel(ngram_frame, text="N-gram Range:").pack(side="left", padx=5)
+        ngram_label = ctk.CTkLabel(ngram_frame, text="N-gram Range:")
+        ngram_label.pack(side="left", padx=5)
+        if TOOLTIPS_AVAILABLE:
+            add_tooltip(ngram_label, PARAMETER_DESCRIPTIONS.get("ngram_range", "Range of n-grams to extract (e.g., 1-1 for single words, 1-2 for words and bigrams)"))
         self.ngram_min = ctk.CTkEntry(ngram_frame, width=50)
         self.ngram_min.pack(side="left", padx=2)
         self.ngram_min.insert(0, "1")
@@ -241,7 +258,11 @@ class TopicModelingTab:
         # N neighbors
         neigh_frame = ctk.CTkFrame(params_frame)
         neigh_frame.pack(fill="x", pady=2)
-        ctk.CTkLabel(neigh_frame, text="N Neighbors:").pack(side="left", padx=5)
+        neigh_label = ctk.CTkLabel(neigh_frame, text="N Neighbors:")
+        neigh_label.pack(side="left", padx=5)
+        if TOOLTIPS_AVAILABLE:
+            add_tooltip(neigh_label, PARAMETER_DESCRIPTIONS.get("n_neighbors", "Number of neighbors for UMAP dimensionality reduction"))
+        
         self.umap_n_neighbors = ctk.CTkEntry(neigh_frame, width=100)
         self.umap_n_neighbors.pack(side="left", padx=5)
         self.umap_n_neighbors.insert(0, "15")
@@ -249,7 +270,11 @@ class TopicModelingTab:
         # Min distance
         dist_frame = ctk.CTkFrame(params_frame)
         dist_frame.pack(fill="x", pady=2)
-        ctk.CTkLabel(dist_frame, text="Min Distance:").pack(side="left", padx=5)
+        dist_label = ctk.CTkLabel(dist_frame, text="Min Distance:")
+        dist_label.pack(side="left", padx=5)
+        if TOOLTIPS_AVAILABLE:
+            add_tooltip(dist_label, PARAMETER_DESCRIPTIONS.get("min_dist", "Minimum distance between points in UMAP embedding"))
+        
         self.umap_min_dist = ctk.CTkEntry(dist_frame, width=100)
         self.umap_min_dist.pack(side="left", padx=5)
         self.umap_min_dist.insert(0, "0.1")
@@ -278,6 +303,8 @@ class TopicModelingTab:
             rep_frame, text="Use Representation Models"
         )
         self.use_representation.pack(pady=5)
+        if TOOLTIPS_AVAILABLE:
+            add_tooltip(self.use_representation, PARAMETER_DESCRIPTIONS.get("use_representation", "Enable advanced language models to improve topic descriptions"))
         self.use_representation.select()  # Enabled by default with fixed architecture
 
         # Model options
@@ -304,7 +331,11 @@ class TopicModelingTab:
         topk_frame = ctk.CTkFrame(adv_frame)
         topk_frame.pack(fill="x", padx=10, pady=5)
 
-        ctk.CTkLabel(topk_frame, text="Top K Words:").pack(side="left", padx=5)
+        topk_label = ctk.CTkLabel(topk_frame, text="Top K Words:")
+        topk_label.pack(side="left", padx=5)
+        if TOOLTIPS_AVAILABLE:
+            add_tooltip(topk_label, PARAMETER_DESCRIPTIONS.get("top_n_words", "Number of most representative words to extract for each topic"))
+        
         self.top_k_words = ctk.CTkEntry(topk_frame, width=100)
         self.top_k_words.pack(side="left", padx=5)
         self.top_k_words.insert(0, "10")

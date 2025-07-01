@@ -201,12 +201,20 @@ class OptimizationController:
         self.current_config = config
         self._callbacks = callbacks or self._callbacks
         
-        # Get embeddings and documents
+        # Get embeddings and corresponding texts
         embeddings = self.embedding_controller.get_embeddings()
-        documents = self.data_controller.get_combined_texts()
+        documents = self.embedding_controller.get_embedding_texts()
         
         if embeddings is None or not documents:
-            error_msg = "Failed to retrieve embeddings or documents"
+            error_msg = "Failed to retrieve embeddings or corresponding texts"
+            logger.error(error_msg)
+            if self._callbacks and self._callbacks.on_error:
+                self._callbacks.on_error(error_msg)
+            return False
+        
+        # Validate that embeddings and texts match
+        if len(embeddings) != len(documents):
+            error_msg = f"Embeddings ({len(embeddings)}) and texts ({len(documents)}) length mismatch"
             logger.error(error_msg)
             if self._callbacks and self._callbacks.on_error:
                 self._callbacks.on_error(error_msg)

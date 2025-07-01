@@ -340,4 +340,14 @@ class EmbeddingController:
         """
         if self.current_result and self.current_result.embeddings is not None:
             return self.current_result.embeddings
+        return None
+    
+    def get_embedding_texts(self):
+        """Get the texts that correspond to the current embeddings.
+        
+        Returns:
+            List of texts that were embedded, or None if not available
+        """
+        if self.current_result and self.current_result.texts is not None:
+            return self.current_result.texts
         return None 
